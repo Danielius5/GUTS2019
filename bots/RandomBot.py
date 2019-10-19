@@ -254,8 +254,6 @@ class AllyTank:
         vector = np.array([vector_x, vector_y])
         GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
         distance = np.sqrt(np.dot(vector,vector))
-        while (self.heading - heading)**2 > 0.05:
-            pass
         self.forward(distance)
         return
     
@@ -271,9 +269,7 @@ class AllyTank:
         return
     
     def shoot_at(self, x, y):
-        heading = self.aim_at(x,y)
-        while (self.heading - heading)**2 > 0.01:
-            pass
+        self.aim_at(x,y)
         self.shoot
         return
         
@@ -310,4 +306,4 @@ tank1 = AllyTank()
 update_thread = threading.Thread(target=tank1.update_vals)
 tank1.head_to_goal()
 sleep(10)
-tank1.go_to(-tank1.x,0)
+tank1.go_to(0,-tank1.y)
