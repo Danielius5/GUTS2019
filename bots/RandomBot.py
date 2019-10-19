@@ -9,6 +9,7 @@ import argparse
 import random
 import threading
 import math
+import numpy as np
 from time import sleep
 
 class ServerMessageTypes(object):
@@ -162,7 +163,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--debug', action='store_true', help='Enable debug output')
 parser.add_argument('-H', '--hostname', default='127.0.0.1', help='Hostname to connect to')
 parser.add_argument('-p', '--port', default=8052, type=int, help='Port to connect to')
-parser.add_argument('-n', '--name', default='TeamA:RandomBot', help='Name of bot')
+parser.add_argument('-n', '--name', default='TeamA:TestingBot', help='Name of bot')
 args = parser.parse_args()
 
 # Set up console logging
@@ -196,30 +197,48 @@ def spin():
 		GameServer.sendMessage(ServerMessageTypes.TOGGLETURRETRIGHT)
 x = threading.Thread(target=getInfo)
 x.start()
-y = threading.Thread(target=spin)
-y.start()
+#y = threading.Thread(target=spin)
+#y.start()
 sleep(1)
 
 shot = False
 while True:
-	if(enemy.get("Name") and shot == False):
+    if(enemy.get("Name") and shot == False):
+        x_e = enemy.get("X")
+        x_m = me.get("X")
+        
+        y_e = enemy.get("Y")
+        y_m = me.get("Y")
+        
+        x = x_e - x_m
+        y = y_e - y_m
+        
+        
+#        tankEnemyAngle_pos_x = math.atan2((y_m - y_e), (x_m - x_e)) / math.pi * 180
+        tankEnemyVector = np.array([x, y])
+        
+#        tankEnemyVector_len = np.dot(tankEnemyVector,tankEnemyVector)
+        tankEnemyAngle = np.arccos(np.dot(tankEnemyVector, np.array([-1,0])/np.linalg.norm(tankEnemyVector))) / math.pi * 180
+        
+        if x >= 0 and y >= 0: # 2nd quadrant
+            tankEnemyAngle = 450 - tankEnemyAngle
+            print("2nd quadrant", tankEnemyAngle)
+        elif x > 0 and y < 0: #3rd quadrant
+            tankEnemyAngle = 90 + tankEnemyAngle
+            print("3rd quadrant", tankEnemyAngle)
+        elif x <= 0 and y < 0: #4th quadrant
+            tankEnemyAngle = 90 + tankEnemyAngle
+            print("4th quadrant", tankEnemyAngle)
+        else: #1st quadrant
+            tankEnemyAngle = 90 - tankEnemyAngle
+            print("1st quadrant", tankEnemyAngle)
+        
+#        tankEnemyAngle = tankEnemyAngle_pos_x - 90
+        tankEnemyAngle = 45+180
+        
+        logging.info(tankEnemyAngle)
 
-		x_e = enemy.get("X")
-		x_m = me.get("X")
-
-		y_e = enemy.get("Y")
-		y_m = me.get("Y")
-
-		x = x_e - x_m
-		y = y_e - y_m
-
-		tankEnemyAngle = math.atan2((y_e - y_m), (x_e - x_m)) / math.pi * 180
-
-		logging.info(tankEnemyAngle)
-
-
-		GameServer.sendMessage(ServerMessageTypes.TURNTURRETTOHEADING, {'Amount': 90})
-		sleep(1)
-		GameServer.sendMessage(ServerMessageTypes.FIRE)
-		shot = True
-
+        GameServer.sendMessage(ServerMessageTypes.TURNTURRETTOHEADING, {'Amount': tankEnemyAngle})
+        sleep(5)
+        GameServer.sendMessage(ServerMessageTypes.FIRE)
+        shot = True
