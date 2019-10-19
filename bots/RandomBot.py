@@ -175,31 +175,22 @@ else:
 # Connect to game server
 GameServer = ServerComms(args.hostname, args.port)
 
-# Spawn our tank
-#logging.info("Creating tank with name '{}'".format(args.name))
-#GameServer.sendMessage(ServerMessageTypes.CREATETANK, {'Name': args.name})
 
-me = {}
-enemy = {}
 def getInfo():
-    global me, enemy
+#    global me, enemy
     while True:
         message = GameServer.readMessage()
-#        print(message)
-        if(not args.name == message.get("Name")):
-            enemy = message
-			# logging.info("enemy appeared")
+        if args.name == message.get("Name"):
+            tank1.update_vals(message)
+        elif message.get("Type") == "Tank":
+            if message.get("Name").startswith("TeamDominos"):
+                ally_info = message
+            else:
+                enemy_info = message
         else:
-            me = message
-    return me
+            pickup_info = message
+    return
             
-info_message = {}
-            
-#def storeInfo():
-#    while True:
-#        message = GameServer.readMessage()
-#        for key in message:
-#            info_message[key] = message.get(key)
 
 def spin():
 	while True:
@@ -229,23 +220,20 @@ class AllyTank:
         self.name = args.name
         GameServer.sendMessage(ServerMessageTypes.CREATETANK, {'Name': args.name})
         logging.info("Creating tank with name '{}'".format(args.name))
-        self.x = me.get("X")
-        self.y = me.get("Y")
-        self.ammo = me.get("Ammo")
-        self.hp = me.get("Health")
-        self.heading = me.get("Heading")
-        self.turret_heading = me.get("TurretHeading")
-        while self.x == None:
-            self.update_vals()
+        self.x = 0
+        self.y = 0
+        self.ammo = 10
+        self.hp = 3
+        self.heading = 0
+        self.turret_heading = 0
         
-    def update_vals(self):
-        global me
-        self.x = me.get("X")
-        self.y = me.get("Y")
-        self.ammo = me.get("Ammo")
-        self.hp = me.get("Health")
-        self.heading = me.get("Heading")
-        self.turret_heading = me.get("TurretHeading")
+    def update_vals(self, message):
+        self.x = message.get("X")
+        self.y = message.get("Y")
+        self.ammo = message.get("Ammo")
+        self.hp = message.get("Health")
+        self.heading = message.get("Heading")
+        self.turret_heading = message.get("TurretHeading")
     
     def go_to(self, x, y):
         vector_x = x - self.x
@@ -275,9 +263,9 @@ class AllyTank:
         
     def head_to_goal(self):
         if self.y < 0:
-            self.go_to(0,-102)
+            self.go_to(0,-105)
         else:
-            self.go_to(0,102)
+            self.go_to(0,105)
         return
     
     def forward(self, dist = None):
@@ -293,17 +281,14 @@ class AllyTank:
             GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
         return
     
-#    def nearest_health(self):
         
 
 
-        
+tank1 = AllyTank()        
 info_thread = threading.Thread(target=getInfo)
 info_thread.start()
 sleep(1)
 
-tank1 = AllyTank()
-update_thread = threading.Thread(target=tank1.update_vals)
 tank1.head_to_goal()
 sleep(10)
 tank1.go_to(0,-tank1.y)
