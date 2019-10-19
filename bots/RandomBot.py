@@ -6,7 +6,6 @@ import logging
 import binascii
 import struct
 import argparse
-import random
 import threading
 import math
 import numpy as np
@@ -163,7 +162,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--debug', action='store_true', help='Enable debug output')
 parser.add_argument('-H', '--hostname', default='127.0.0.1', help='Hostname to connect to')
 parser.add_argument('-p', '--port', default=8052, type=int, help='Port to connect to')
-parser.add_argument('-n', '--name', default='TeamA:TestingBot', help='Name of bot')
+parser.add_argument('-n', '--name', default='TeamDominos:TestingBot', help='Name of bot')
 args = parser.parse_args()
 
 # Set up console logging
@@ -177,31 +176,42 @@ else:
 GameServer = ServerComms(args.hostname, args.port)
 
 # Spawn our tank
-logging.info("Creating tank with name '{}'".format(args.name))
-GameServer.sendMessage(ServerMessageTypes.CREATETANK, {'Name': args.name})
+#logging.info("Creating tank with name '{}'".format(args.name))
+#GameServer.sendMessage(ServerMessageTypes.CREATETANK, {'Name': args.name})
 
 me = {}
 enemy = {}
 def getInfo():
-	global me, enemy
-	while True:
-		message = GameServer.readMessage()
-		if(not args.name == message.get("Name")):
-			enemy = message
+    global me, enemy
+    while True:
+        message = GameServer.readMessage()
+#        print(message)
+        if(not args.name == message.get("Name")):
+            enemy = message
 			# logging.info("enemy appeared")
-		else:
-			me = message
+        else:
+            me = message
+    return me
+            
+info_message = {}
+            
+#def storeInfo():
+#    while True:
+#        message = GameServer.readMessage()
+#        for key in message:
+#            info_message[key] = message.get(key)
 
 def spin():
 	while True:
 		GameServer.sendMessage(ServerMessageTypes.TOGGLETURRETRIGHT)
-        
+
 def vector_heading(x, y):
     x = -x
     vector = np.array([x,y])
     vector_dot = np.dot(vector,np.array([0,1]))
     vector_len = np.linalg.norm(vector)
     angle = np.arccos(vector_dot/vector_len) / math.pi * 180
+    
     if x >= 0 and y >= 0:
         angle = 270 - angle
     elif x > 0 and y < 0:
@@ -211,32 +221,93 @@ def vector_heading(x, y):
     else:
         angle = angle + 270
     return angle
+
+class AllyTank:
+    
+    def __init__(self):
+        global me
+        self.name = args.name
+        GameServer.sendMessage(ServerMessageTypes.CREATETANK, {'Name': args.name})
+        logging.info("Creating tank with name '{}'".format(args.name))
+        self.x = me.get("X")
+        self.y = me.get("Y")
+        self.ammo = me.get("Ammo")
+        self.hp = me.get("Health")
+        self.heading = me.get("Heading")
+        self.turret_heading = me.get("TurretHeading")
+        while self.x == None:
+            self.update_vals()
+        
+    def update_vals(self):
+        global me
+        self.x = me.get("X")
+        self.y = me.get("Y")
+        self.ammo = me.get("Ammo")
+        self.hp = me.get("Health")
+        self.heading = me.get("Heading")
+        self.turret_heading = me.get("TurretHeading")
+    
+    def go_to(self, x, y):
+        vector_x = x - self.x
+        vector_y = y - self.y
+        heading = vector_heading(vector_x, vector_y)
+        vector = np.array([vector_x, vector_y])
+        GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
+        distance = np.sqrt(np.dot(vector,vector))
+        while (self.heading - heading)**2 > 0.05:
+            pass
+        self.forward(distance)
+        return
+    
+    def aim_at(self, x, y):
+        vector_x = x - self.x
+        vector_y = y - self.y
+        heading = vector_heading(vector_x, vector_y)
+        GameServer.sendMessage(ServerMessageTypes.TURNTURRETTOHEADING, {'Amount': heading})
+        return heading
+    
+    def shoot(self):
+        GameServer.sendMessage(ServerMessageTypes.FIRE)
+        return
+    
+    def shoot_at(self, x, y):
+        heading = self.aim_at(x,y)
+        while (self.heading - heading)**2 > 0.01:
+            pass
+        self.shoot
+        return
+        
+    def head_to_goal(self):
+        if self.y < 0:
+            self.go_to(0,-102)
+        else:
+            self.go_to(0,102)
+        return
+    
+    def forward(self, dist = None):
+        if dist == None:
+            GameServer.sendMessage(ServerMessageTypes.TOGGLEFORWARD)
+        else:
+            GameServer.sendMessage(ServerMessageTypes.MOVEFORWARDDISTANCE, {"Amount": dist})
+        return
+    
+    def bee_line(self, times = 10):
+        for i in range(times):
+            heading = self.heading + np.sin(np.sqrt(self.x*self.x + self.y*self.y)*(math.pi/2))*3
+            GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
+        return
+    
+#    def nearest_health(self):
+        
+
+
         
 info_thread = threading.Thread(target=getInfo)
 info_thread.start()
 sleep(1)
 
-shot = False
-while True:
-    if(enemy.get("Name") and shot == False):
-        x_e = enemy.get("X")
-        x_m = me.get("X")
-        
-        y_e = enemy.get("Y")
-        y_m = me.get("Y")
-        
-        x = x_e - x_m
-        y = y_e - y_m
-        
-        tankEnemyAngle = vector_heading(x, y)
-        
-        logging.info(tankEnemyAngle)
-
-        GameServer.sendMessage(ServerMessageTypes.TURNTURRETTOHEADING, {'Amount': tankEnemyAngle})
-        sleep(1)
-        GameServer.sendMessage(ServerMessageTypes.FIRE)
-        shot = True
-        
-    if shot:
-        sleep(2)
-        shot = False
+tank1 = AllyTank()
+update_thread = threading.Thread(target=tank1.update_vals)
+tank1.head_to_goal()
+sleep(10)
+tank1.go_to(-tank1.x,0)
