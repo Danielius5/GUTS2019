@@ -9,7 +9,7 @@ import argparse
 import threading
 import math
 import numpy as np
-from time import sleep
+from time import sleep, time
 
 class ServerMessageTypes(object):
 	TEST = 0
@@ -175,18 +175,40 @@ else:
 # Connect to game server
 GameServer = ServerComms(args.hostname, args.port)
 
+ally_info = {}
+enemy_info = {}
+pickup_info = {}
+
+ally_info_prev = {}
+enemy_info_prev = {}
+pickup_info_prev = {}
 
 def getInfo():
-#    global me, enemy
+    global ally_info, enemy_info, pickup_info
+    global ally_info_prev, enemy_info_prev, pickup_info_prev
     while True:
         message = GameServer.readMessage()
-        if args.name == message.get("Name"):
+        obj_name = message.get("Name")
+        obj_type = message.get("Type")
+        if obj_name == args.name:
             tank1.update_vals(message)
-        elif message.get("Type") == "Tank":
-            if message.get("Name").startswith("TeamDominos"):
-                ally_info = message
+        elif obj_type == "Tank":
+            if obj_name.startswith("TeamDominos"):
+                try:
+                    ally_info[obj_name]
+                except:
+                    ally_info[obj_name] = message
+                    continue
+                ally_info_prev[obj_name] = ally_info[obj_name].copy() #Dict, can copy
+                ally_info[obj_name] = message
             else:
-                enemy_info = message
+                try:
+                    enemy_info[obj_name]
+                except:
+                    enemy_info[obj_name] = message
+                    continue
+                enemy_info_prev[obj_name] = enemy_info[obj_name].copy() #Dict, must copy
+                enemy_info[obj_name] = message
         else:
             pickup_info = message
     return
@@ -197,6 +219,7 @@ def spin():
 		GameServer.sendMessage(ServerMessageTypes.TOGGLETURRETRIGHT)
 
 def vector_heading(x, y):
+    #MAJORLY overcomplicated due to messing up the axes, but it works.
     x = -x
     vector = np.array([x,y])
     vector_dot = np.dot(vector,np.array([0,1]))
@@ -245,6 +268,23 @@ class AllyTank:
         self.forward(distance)
         return
     
+    def turn_towards(self, x, y):
+        vector_x = x - self.x
+        vector_y = y - self.y
+        heading = vector_heading(vector_x, vector_y)
+        GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
+        return
+    
+    def turn_perpendicular(self, x, y):
+        vector_x = x - self.x
+        vector_y = y - self.y
+        heading = vector_heading(vector_x, vector_y)
+        if heading <= 270:
+            GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading+90})
+        else:
+            GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading-90})
+        return
+        
     def aim_at(self, x, y):
         vector_x = x - self.x
         vector_y = y - self.y
@@ -257,8 +297,11 @@ class AllyTank:
         return
     
     def shoot_at(self, x, y):
+        self.stop_all()
         self.aim_at(x,y)
-        self.shoot
+        self.turn_towards(x,y)
+        sleep(1)
+        self.shoot()
         return
         
     def head_to_goal(self):
@@ -275,13 +318,87 @@ class AllyTank:
             GameServer.sendMessage(ServerMessageTypes.MOVEFORWARDDISTANCE, {"Amount": dist})
         return
     
-    def bee_line(self, times = 10):
-        for i in range(times):
-            heading = self.heading + np.sin(np.sqrt(self.x*self.x + self.y*self.y)*(math.pi/2))*3
-            GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
+    def reverse(self, dist = None):
+        if dist == None:
+            GameServer.sendMessage(ServerMessageTypes.TOGGLEREVERSE)
+        else:
+            GameServer.sendMessage(ServerMessageTypes.MOVEBACKWARSDISTANCE, {"Amount": dist})
         return
     
-        
+    def stop_all(self):
+        GameServer.sendMessage(ServerMessageTypes.STOPALL)
+        return
+    
+    def stop_move(self):
+        GameServer.sendMessage(ServerMessageTypes.STOPMOVE)
+        return
+    
+    def stop_turn(self):
+        GameServer.sendMessage(ServerMessageTypes.STOPTURN)
+        return
+     
+    def stop_turret(self):
+        GameServer.sendMessage(ServerMessageTypes.STOPTURRET)
+        return
+    
+    def bee_line(self, times = 10):
+        #Engage in evasive maneouvres
+        for i in range(times):
+            heading = self.heading + i*(math.pi/2)*10
+            GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
+            sleep(0.5)
+        return
+    
+    def nearest_enemy(self):
+        distances = {}
+        for enemy in enemy_info:
+            enemy_x = enemy_info[enemy].get("X")
+            enemy_y = enemy_info[enemy].get("Y")
+            distance = np.sqrt(enemy_x**2 + enemy_y**2)
+            distances[enemy] = distance
+        dist_values = list(distances.values())
+        min_dist = min(dist_values)
+        ind = dist_values.index(min_dist)
+        return list(distances.keys())[ind]
+    
+    def engage_combat(self):
+        enemy = self.nearest_enemy()
+        while enemy_info[enemy].get("Health") > 0:
+            enemy_x = enemy_info[enemy].get("X")
+            enemy_y = enemy_info[enemy].get("Y")
+            self.shoot_at(enemy_x, enemy_y)
+            sleep(1)
+            self.turn_perpendicular(enemy_x, enemy_y)
+            t0 = time()
+            while time() - t0 < 2.5:
+                self.bee_line()
+                self.forward(10)
+                self.reverse(10)
+            self.stop_all()
+        return
+    
+    def search_and_destroy(self):
+        try:
+            self.nearest_enemy()
+        except:
+            enemy_found = False
+            GameServer.sendMessage(ServerMessageTypes.TOGGLETURRETLEFT)
+            while not enemy_found:
+                try:
+                    self.nearest_enemy()
+                except:
+                    if self.y < 0:
+                        self.go_to(0, 50)
+                    else:
+                        self.go_to(0, -50)
+                    sleep(1)
+                    continue
+                self.stop_turret()
+                enemy_found = True
+        self.engage_combat()
+        return
+                
+            
 
 
 tank1 = AllyTank()        
@@ -289,6 +406,4 @@ info_thread = threading.Thread(target=getInfo)
 info_thread.start()
 sleep(1)
 
-tank1.head_to_goal()
-sleep(10)
-tank1.go_to(0,-tank1.y)
+tank1.search_and_destroy()
