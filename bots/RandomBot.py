@@ -195,10 +195,25 @@ def getInfo():
 def spin():
 	while True:
 		GameServer.sendMessage(ServerMessageTypes.TOGGLETURRETRIGHT)
-x = threading.Thread(target=getInfo)
-x.start()
-#y = threading.Thread(target=spin)
-#y.start()
+        
+def vector_heading(x, y):
+    x = -x
+    vector = np.array([x,y])
+    vector_dot = np.dot(vector,np.array([0,1]))
+    vector_len = np.linalg.norm(vector)
+    angle = np.arccos(vector_dot/vector_len) / math.pi * 180
+    if x >= 0 and y >= 0:
+        angle = 270 - angle
+    elif x > 0 and y < 0:
+        angle = 270 - angle
+    elif x <= 0 and y < 0:
+        angle = angle - 90
+    else:
+        angle = angle + 270
+    return angle
+        
+info_thread = threading.Thread(target=getInfo)
+info_thread.start()
 sleep(1)
 
 shot = False
@@ -213,32 +228,15 @@ while True:
         x = x_e - x_m
         y = y_e - y_m
         
-        
-#        tankEnemyAngle_pos_x = math.atan2((y_m - y_e), (x_m - x_e)) / math.pi * 180
-        tankEnemyVector = np.array([x, y])
-        
-#        tankEnemyVector_len = np.dot(tankEnemyVector,tankEnemyVector)
-        tankEnemyAngle = np.arccos(np.dot(tankEnemyVector, np.array([-1,0])/np.linalg.norm(tankEnemyVector))) / math.pi * 180
-        
-        if x >= 0 and y >= 0: # 2nd quadrant
-            tankEnemyAngle = 450 - tankEnemyAngle
-            print("2nd quadrant", tankEnemyAngle)
-        elif x > 0 and y < 0: #3rd quadrant
-            tankEnemyAngle = 90 + tankEnemyAngle
-            print("3rd quadrant", tankEnemyAngle)
-        elif x <= 0 and y < 0: #4th quadrant
-            tankEnemyAngle = 90 + tankEnemyAngle
-            print("4th quadrant", tankEnemyAngle)
-        else: #1st quadrant
-            tankEnemyAngle = 90 - tankEnemyAngle
-            print("1st quadrant", tankEnemyAngle)
-        
-#        tankEnemyAngle = tankEnemyAngle_pos_x - 90
-        tankEnemyAngle = 45+180
+        tankEnemyAngle = vector_heading(x, y)
         
         logging.info(tankEnemyAngle)
 
         GameServer.sendMessage(ServerMessageTypes.TURNTURRETTOHEADING, {'Amount': tankEnemyAngle})
-        sleep(5)
+        sleep(1)
         GameServer.sendMessage(ServerMessageTypes.FIRE)
         shot = True
+        
+    if shot:
+        sleep(2)
+        shot = False
