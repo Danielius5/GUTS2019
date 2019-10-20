@@ -273,6 +273,7 @@ class AllyTank:
         vector_y = y - self.y
         heading = vector_heading(vector_x, vector_y)
         GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
+        sleep(np.abs(self.heading - heading) / 200)
         return
     
     def turn_perpendicular(self, x, y):
@@ -290,6 +291,7 @@ class AllyTank:
         vector_y = y - self.y
         heading = vector_heading(vector_x, vector_y)
         GameServer.sendMessage(ServerMessageTypes.TURNTURRETTOHEADING, {'Amount': heading})
+        sleep(np.abs(self.heading - heading)/300)
         return heading
     
     def shoot(self):
@@ -298,9 +300,9 @@ class AllyTank:
     
     def shoot_at(self, x, y):
         self.stop_all()
+        sleep(0.1)
         self.aim_at(x,y)
-        self.turn_towards(x,y)
-        sleep(1)
+        sleep(0.75)
         self.shoot()
         return
         
@@ -343,6 +345,7 @@ class AllyTank:
     
     def bee_line(self, times = 10):
         #Engage in evasive maneouvres
+        #AKA: Wiggle
         for i in range(times):
             heading = self.heading + i*(math.pi/2)*10
             GameServer.sendMessage(ServerMessageTypes.TURNTOHEADING, {'Amount': heading})
@@ -362,6 +365,7 @@ class AllyTank:
         return list(distances.keys())[ind]
     
     def engage_combat(self):
+        self.stop_all
         enemy = self.nearest_enemy()
         while enemy_info[enemy].get("Health") > 0:
             enemy_x = enemy_info[enemy].get("X")
@@ -371,10 +375,10 @@ class AllyTank:
             self.turn_perpendicular(enemy_x, enemy_y)
             t0 = time()
             while time() - t0 < 2.5:
+                GameServer.sendMessage(ServerMessageTypes.TOGGLEFORWARD)
                 self.bee_line()
-                self.forward(10)
-                self.reverse(10)
             self.stop_all()
+        self.head_to_goal()
         return
     
     def search_and_destroy(self):
@@ -387,7 +391,7 @@ class AllyTank:
                 try:
                     self.nearest_enemy()
                 except:
-                    if self.y < 0:
+                    if self.y < 25 and self.heading < 180:
                         self.go_to(0, 50)
                     else:
                         self.go_to(0, -50)
@@ -397,7 +401,32 @@ class AllyTank:
                 enemy_found = True
         self.engage_combat()
         return
-                
+    
+    def shoot_at_nearest(self):
+        try:
+            self.nearest_enemy()
+        except:
+            enemy_found = False
+            GameServer.sendMessage(ServerMessageTypes.TOGGLETURRETLEFT)
+            while not enemy_found:
+                try:
+                    self.nearest_enemy()
+                except:
+                    continue
+                self.stop_turret()
+                enemy_found = True
+        enemy = self.nearest_enemy()
+        while enemy_info[enemy].get("Health") > 0:
+            enemy_x = enemy_info[enemy].get("X")
+            enemy_y = enemy_info[enemy].get("Y")
+            self.shoot_at(enemy_x, enemy_y)  
+        return
+    
+    def main_loop(self):
+        while True:
+            self.search_and_destroy() #find and kill an enemy
+#            self.head_to_goal() #go back to goal and deposit the points
+    
             
 
 
@@ -406,4 +435,4 @@ info_thread = threading.Thread(target=getInfo)
 info_thread.start()
 sleep(1)
 
-tank1.search_and_destroy()
+tank1.main_loop()
